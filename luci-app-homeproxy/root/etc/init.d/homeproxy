@@ -30,6 +30,12 @@ log() {
 start_service() {
 	config_load "$CONF"
 
+	local enabled
+	config_get_bool enabled "config" "enabled" "0"
+	if [ "$enabled" = "0" ]; then
+		return 1
+	fi
+
 	local routing_mode proxy_mode
 	config_get routing_mode "config" "routing_mode" "bypass_mainland_china"
 	config_get proxy_mode "config" "proxy_mode" "redirect_tproxy"

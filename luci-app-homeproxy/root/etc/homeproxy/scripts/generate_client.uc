@@ -949,7 +949,7 @@ if (!isEmpty(main_node)) {
 			type: cfg.type,
 			tag: 'cfg-' + cfg['.name'] + '-rule',
 			format: cfg.format,
-			path: cfg.path,
+			path: cfg.path || (HP_DIR + '/ruleset/' + cfg['.name'] + '.' + (cfg.format === 'binary' ? 'srs' : 'json')),
 			url: cfg.url,
 			download_detour: get_outbound(cfg.outbound),
 			update_interval: cfg.update_interval

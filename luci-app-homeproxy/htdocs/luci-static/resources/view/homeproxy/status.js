@@ -176,16 +176,16 @@ function getRuntimeLog(o, name, _option_index, section_id, _in_table) {
 		}, _('Collecting data...'))
 	);
 
-	let log;
-	poll.add(L.bind(() => {
+	function loadLog() {
 		return fs.read_direct(String.format('%s/%s.log', hp_dir, filename), 'text')
 		.then((res) => {
-			log = E('pre', { 'wrap': 'pre' }, [
+			let log = E('pre', { 'wrap': 'pre' }, [
 				res.trim() || _('Log is empty.')
 			]);
 
 			dom.content(log_textarea, log);
 		}).catch((err) => {
+			let log;
 			if (err.toString().includes('NotFoundError'))
 				log = E('pre', { 'wrap': 'pre' }, [
 					_('Log file does not exist.')
@@ -197,7 +197,9 @@ function getRuntimeLog(o, name, _option_index, section_id, _in_table) {
 
 			dom.content(log_textarea, log);
 		});
-	}));
+	}
+
+	loadLog();
 
 	return E([
 		E('style', [ css ]),
@@ -209,15 +211,21 @@ function getRuntimeLog(o, name, _option_index, section_id, _in_table) {
 					'class': 'btn cbi-button cbi-button-action',
 					'style': 'margin-left: 4px;',
 					'click': ui.createHandlerFn(this, () => {
-						return L.resolveDefault(callLogClean(filename), {});
+						return L.resolveDefault(callLogClean(filename), {}).then(() => {
+							return loadLog();
+						});
 					})
-				}, [ _('Clean log') ])
+				}, [ _('Clean log') ]),
+				E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'style': 'margin-left: 4px;',
+					'click': ui.createHandlerFn(this, () => {
+						return loadLog();
+					})
+				}, [ _('Refresh log') ])
 			]),
 			E('div', {'class': 'cbi-section'}, [
-				log_textarea,
-				E('div', {'style': 'text-align:right'},
-					E('small', {}, _('Refresh every %s seconds.').format(L.env.pollinterval))
-				)
+				log_textarea
 			])
 		])
 	]);

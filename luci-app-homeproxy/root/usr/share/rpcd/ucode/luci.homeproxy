@@ -231,6 +231,30 @@ const methods = {
 		}
 	},
 
+	ruleset_update: {
+		args: { section_id: 'section_id' },
+		call: function(req) {
+			const section_id = req.args?.section_id;
+			if (!section_id)
+				return { result: false, error: 'missing section_id' };
+
+			const url = uci.get('homeproxy', section_id, 'url');
+			const format = uci.get('homeproxy', section_id, 'format') || 'binary';
+			if (!url)
+				return { result: false, error: 'ruleset has no URL' };
+
+			const filepath = `${HP_DIR}/ruleset/${section_id}.${format === 'binary' ? 'srs' : 'json'}`;
+			system(`mkdir -p ${HP_DIR}/ruleset`);
+
+			const exit_code = system(`/usr/bin/wget -qO ${shellquote(filepath)} ${shellquote(url)}`, 15000);
+			if (exit_code !== 0) {
+				return { result: false, error: 'download failed with code ' + exit_code };
+			}
+
+			return { result: true };
+		}
+	},
+
 	resources_get_version: {
 		args: { type: 'type' },
 		call: function(req) {

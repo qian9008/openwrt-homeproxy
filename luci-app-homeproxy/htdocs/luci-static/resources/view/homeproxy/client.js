@@ -6,6 +6,7 @@
 
 'use strict';
 'require form';
+'require fs';
 'require network';
 'require poll';
 'require rpc';
@@ -21,6 +22,12 @@ const callServiceList = rpc.declare({
 	object: 'service',
 	method: 'list',
 	params: ['name'],
+	expect: { '': {} }
+});
+
+const callDnsmasqServers = rpc.declare({
+	object: 'dnsmasq',
+	method: 'get_servers',
 	expect: { '': {} }
 });
 
@@ -48,13 +55,48 @@ function getServiceStatus() {
 	});
 }
 
-function renderStatus(isRunning, version) {
+function getDnsHijackStatus() {
+	return L.resolveDefault(callDnsmasqServers(), {}).then((res) => {
+		let is_hijacked = false;
+		let port = 5333; // Default port
+		
+		try {
+			port = parseInt(uci.get('homeproxy', 'infra', 'dns_port')) || 5333;
+		} catch (e) { }
+
+		if (res && Array.isArray(res.servers)) {
+			is_hijacked = res.servers.some(s => s.port === port);
+		}
+		
+		if (!is_hijacked) {
+			return fs.access('/tmp/dnsmasq.d/dnsmasq-homeproxy.d/redirect-dns.conf').then(() => {
+				return { hijacked: true, port: port };
+			}).catch(() => {
+				return { hijacked: false, port: port };
+			});
+		}
+		
+		return { hijacked: true, port: port };
+	});
+}
+
+function renderStatus(isRunning, version, dnsStatus) {
 	let spanTemp = '<em><span style="color:%s"><strong>%s (sing-box v%s) %s</strong></span></em>';
 	let renderHTML;
 	if (isRunning)
 		renderHTML = spanTemp.format('green', _('HomeProxy'), version, _('RUNNING'));
 	else
 		renderHTML = spanTemp.format('red', _('HomeProxy'), version, _('NOT RUNNING'));
+
+	if (dnsStatus) {
+		if (dnsStatus.hijacked) {
+			renderHTML += ' | <span class="label" style="background-color: #2dca73; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; margin-left: 10px;">' + 
+				_('DNS Hijacked (127.0.0.1#%d)').format(dnsStatus.port) + '</span>';
+		} else {
+			renderHTML += ' | <span class="label" style="background-color: #e74c3c; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; margin-left: 10px;">' + 
+				_('DNS Bypass (Not Hijacked)') + '</span>';
+		}
+	}
 
 	return renderHTML;
 }
@@ -104,20 +146,60 @@ return view.extend({
 		s = m.section(form.TypedSection);
 		s.render = function () {
 			poll.add(function () {
-				return L.resolveDefault(getServiceStatus()).then((res) => {
+				return Promise.all([
+					L.resolveDefault(getServiceStatus(), false),
+					L.resolveDefault(getDnsHijackStatus(), { hijacked: false, port: 5333 })
+				]).then((results) => {
 					let view = document.getElementById('service_status');
-					view.innerHTML = renderStatus(res, features.version);
+					view.innerHTML = renderStatus(results[0], features.version, results[1]);
 				});
 			});
 
-			return E('div', { class: 'cbi-section', id: 'status_bar' }, [
-					E('p', { id: 'service_status' }, _('Collecting data...'))
+			return E('div', { class: 'cbi-section', id: 'status_bar', style: 'display: flex; align-items: center; justify-content: space-between;' }, [
+				E('p', { id: 'service_status', style: 'margin: 0;' }, _('Collecting data...')),
+				E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'click': ui.createHandlerFn(this, function() {
+						const btn = document.querySelector('#status_bar button');
+						btn.disabled = true;
+						btn.textContent = _('Reloading...');
+						return fs.exec('/etc/init.d/homeproxy', ['reload']).then(() => {
+							ui.addNotification(null, E('p', _('Service reloaded successfully.')));
+							btn.disabled = false;
+							btn.textContent = _('Reload Service');
+						}).catch((err) => {
+							ui.addNotification(null, E('p', _('Failed to reload service: %s').format(err.message || err)));
+							btn.disabled = false;
+							btn.textContent = _('Reload Service');
+						});
+					})
+				}, [ _('Reload Service') ])
 			]);
 		}
 
 		s = m.section(form.NamedSection, 'config', 'homeproxy');
 
 		s.tab('routing', _('Routing Settings'));
+
+		o = s.taboption('routing', form.Button, 'enabled', _('Service Switch'));
+		o.modalonly = false;
+		o.inputtitle = function(section_id) {
+			let is_enabled = uci.get('homeproxy', section_id, 'enabled') === '1';
+			this.inputstyle = is_enabled ? 'reset' : 'apply';
+			return is_enabled ? _('Running (Click to Stop)') : _('Stopped (Click to Start)');
+		};
+		o.onclick = function(ev, section_id) {
+			let is_enabled = uci.get('homeproxy', section_id, 'enabled') === '1';
+			uci.set('homeproxy', section_id, 'enabled', is_enabled ? '0' : '1');
+			
+			const btn = ev.target;
+			btn.disabled = true;
+			btn.textContent = _('Processing...');
+
+			return this.map.save(null, true).then(() => {
+				return ui.changes.apply(true);
+			});
+		};
 
 		o = s.taboption('routing', form.ListValue, 'main_node', _('Main node'));
 		o.value('nil', _('Disable'));
@@ -1393,6 +1475,52 @@ return view.extend({
 			_('Update interval of rule set.'));
 		so.placeholder = '1d';
 		so.depends('type', 'remote');
+
+		so = ss.option(form.Button, '_update', _('Update'));
+		so.modalonly = false;
+		so.inputstyle = 'apply';
+		so.inputtitle = function(section_id) {
+			return _('Update');
+		}
+		so.depends('type', 'remote');
+		so.onclick = function(ev, section_id) {
+			const btn = ev.target;
+			const oldTitle = btn.textContent;
+			btn.disabled = true;
+			btn.textContent = _('Updating...');
+
+			const callRulesetUpdate = rpc.declare({
+				object: 'luci.homeproxy',
+				method: 'ruleset_update',
+				params: ['section_id'],
+				expect: { '': {} }
+			});
+
+			return L.resolveDefault(callRulesetUpdate(section_id), {}).then((res) => {
+				if (res.result) {
+					btn.textContent = _('Success');
+					ui.addNotification(null, E('p', _('Rule set updated successfully. Reloading service...')));
+					setTimeout(() => {
+						btn.textContent = oldTitle;
+						btn.disabled = false;
+					}, 3000);
+				} else {
+					btn.textContent = _('Failed');
+					ui.addNotification(null, E('p', _('Failed to update rule set: %s').format(res.error || _('Unknown error'))));
+					setTimeout(() => {
+						btn.textContent = oldTitle;
+						btn.disabled = false;
+					}, 5000);
+				}
+			}).catch((err) => {
+				btn.textContent = _('Error');
+				ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)));
+				setTimeout(() => {
+					btn.textContent = oldTitle;
+					btn.disabled = false;
+				}, 5000);
+			});
+		}
 		/* Rule set settings end */
 
 		/* ACL settings start */

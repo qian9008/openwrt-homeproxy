@@ -2,6 +2,11 @@ name: bulid 2 package
 
 on:
   workflow_dispatch:
+    inputs:
+      plugins:
+        description: 'Packages to build (space-separated, e.g., luci-app-homeproxy, or * for default)'
+        required: false
+        default: '*'
   push:
     tags:
       - v.**
@@ -57,11 +62,21 @@ jobs:
         uses: actions/upload-artifact@v7.0.0
         with:
           name: ${{ matrix.arch }}-${{ matrix.sdk }}
-          path: bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
+          path: |
+            bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
+            bin/packages/${{ matrix.arch }}/packages_ci/*.apk
 
       - name: Zip packages
         run: |
-          zip -j ${{ matrix.arch }}.zip bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
+          shopt -s nullglob
+          files=(bin/packages/${{ matrix.arch }}/packages_ci/*.ipk bin/packages/${{ matrix.arch }}/packages_ci/*.apk)
+          if [ ${#files[@]} -gt 0 ]; then
+            zip -j ${{ matrix.arch }}-${{ matrix.sdk }}.zip "${files[@]}"
+          else
+            echo "No packages found to zip!"
+            touch empty.zip
+            zip -j ${{ matrix.arch }}-${{ matrix.sdk }}.zip empty.zip
+          fi
           echo -e "**Beta文件说明** 🎈:\n" >> release.txt
           echo -e "1. Subscription page slow response with a large number of nodes \n" >> release.txt
           echo -e "2. Refactor nft rules \n" >> release.txt
@@ -73,7 +88,7 @@ jobs:
         uses: ncipollo/release-action@v1.21.0
         with:
           token: ${{ secrets.TOKEN }}
-          artifacts: "${{ matrix.arch }}-${{ matrix.sdk }}.zip,bin/packages/${{ matrix.arch }}/packages_ci/*.ipk"
+          artifacts: "${{ matrix.arch }}-${{ matrix.sdk }}.zip,bin/packages/${{ matrix.arch }}/packages_ci/*.[ia]pk"
           allowUpdates: true
           replacesArtifacts: true
           bodyFile: "release.txt"
