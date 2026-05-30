@@ -285,12 +285,10 @@ return baseclass.extend({
 		if (section_id && value) {
 			value = value.match(/^(\d+)?\:(\d+)?$/);
 			if (value && (value[1] || value[2])) {
-				if (!value[1])
-					value[1] = 0;
-				else if (!value[2])
-					value[2] = 65535;
+				let port1 = value[1] ? parseInt(value[1], 10) : 0;
+				let port2 = value[2] ? parseInt(value[2], 10) : 65535;
 
-				if (value[1] < value[2] && value[2] <= 65535)
+				if (port1 < port2 && port2 <= 65535)
 					return true;
 			}
 
