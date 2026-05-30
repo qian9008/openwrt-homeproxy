@@ -17,7 +17,7 @@ on:
           - aarch64_cortex-a53
           - x86_64
       format:
-        description: 'Package format to build (IPK for 23.05, APK for 24.10)'
+        description: 'Package format to build (IPK for 23.05, APK for 24.10/25.12)'
         required: true
         type: choice
         default: 'all'
@@ -37,6 +37,7 @@ jobs:
       fail-fast: false
       matrix:
         sdk:
+          - 25.12.0
           - 24.10.6
           - 23.05.6
         arch:
@@ -45,6 +46,7 @@ jobs:
         exclude:
           - arch: ${{ github.event.inputs.arch == 'aarch64_cortex-a53' && 'x86_64' || '' }}
           - arch: ${{ github.event.inputs.arch == 'x86_64' && 'aarch64_cortex-a53' || '' }}
+          - sdk: ${{ github.event.inputs.format == 'ipk' && '25.12.0' || '' }}
           - sdk: ${{ github.event.inputs.format == 'ipk' && '24.10.6' || '' }}
           - sdk: ${{ github.event.inputs.format == 'apk' && '23.05.6' || '' }}
 
