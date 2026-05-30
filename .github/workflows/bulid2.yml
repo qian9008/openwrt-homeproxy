@@ -7,6 +7,24 @@ on:
         description: 'Packages to build (space-separated, e.g., luci-app-homeproxy, or * for default)'
         required: false
         default: '*'
+      arch:
+        description: 'Architecture to build'
+        required: true
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - aarch64_cortex-a53
+          - x86_64
+      format:
+        description: 'Package format to build (IPK for 23.05, APK for 24.10)'
+        required: true
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - ipk
+          - apk
   push:
     tags:
       - v.**
@@ -24,6 +42,11 @@ jobs:
         arch:
           - aarch64_cortex-a53
           - x86_64
+        exclude:
+          - arch: ${{ github.event.inputs.arch == 'aarch64_cortex-a53' && 'x86_64' || '' }}
+          - arch: ${{ github.event.inputs.arch == 'x86_64' && 'aarch64_cortex-a53' || '' }}
+          - sdk: ${{ github.event.inputs.format == 'ipk' && '24.10.6' || '' }}
+          - sdk: ${{ github.event.inputs.format == 'apk' && '23.05.6' || '' }}
 
     steps:
       - uses: actions/checkout@v6.0.2
