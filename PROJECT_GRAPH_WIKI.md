@@ -107,3 +107,37 @@ graph TD
 * **Key Details:**
   * Logs workspace points to `/var/run/homeproxy`.
   * Utilizes `getConnStat()` to measure performance.
+
+---
+
+## 🔀 仓库与上游同步（Git 工作流）
+
+本项目是 `lxiaya/openwrt-homeproxy` 的 fork，使用双 remote 管理。
+
+| Remote | 地址 | 用途 |
+|---|---|---|
+| `origin` | `qian9008/openwrt-homeproxy` | 自己的 fork，日常提交推送目标 |
+| `upstream` | `lxiaya/openwrt-homeproxy` | 上游作者，只读参考 |
+
+### 分支关系（2026-10-27 记录）
+
+* 分叉点：`114de0c`（2026-05-29）。
+* `qian9008/main` 独有 5 个提交，即本地增强功能：全局启用开关、ruleset 手动更新、日志手动刷新、APK 构建支持、CI 改进，以及移除 DNS 劫持状态与相关 ACL 权限。
+* `upstream/main` 独有 1 个提交：`2a6c22e` guard params（已手工合入 `7ce25ff`）。
+* 上游自 2026-05-31 后无任何代码提交。
+
+### 日常操作
+
+```bash
+git fetch upstream                      # 拉取上游
+git log --oneline main..upstream/main   # 看上游有哪些新提交
+git diff upstream/main --stat           # 看差异范围
+```
+
+**合入原则：不要直接 merge 或 reset 到 upstream/main** —— 双方已分叉，且上游的部分改动（如 `homeproxy.js` 端口校验改为字符串比较）是 regression，直接合并会把 Bug 引入。逐条 review 后手工 cherry-pick 或手改。
+
+### 注意事项
+
+* `.workbuddy/` 通过 `.git/info/exclude` 排除，属本地工作数据，不入库。
+* 仓库级 `user.email` 设为 `qian9008@users.noreply.github.com`，避免泄露真实邮箱。
+
